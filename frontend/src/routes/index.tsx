@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { SignedIn, SignedOut, SignInButton, UserButton, useAuth } from '@clerk/clerk-react'
 import { useQuery } from '@tanstack/react-query'
-import Map, { Marker, type MapRef, type ViewStateChangeEvent } from 'react-map-gl'
+import MapGL, { Marker, type MapRef, type ViewStateChangeEvent } from 'react-map-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { api, setTokenGetter } from '../lib/api'
 import { useUserChannel } from '../lib/realtime'
@@ -13,10 +13,12 @@ import { OnboardingModal } from '../components/OnboardingModal'
 import { PlaceDetailPanel } from '../components/PlaceDetailPanel'
 import { RecommendationsPanel } from '../components/RecommendationsPanel'
 import { SocialPanel } from '../components/SocialPanel'
+import { SearchBar } from '../components/SearchBar'
 import { ShareModal } from '../components/ShareModal'
 import { Toasts, type Toast } from '../components/Toasts'
+import { IconPeople, IconSparkle } from '../components/icons'
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_PUBLIC_TOKEN as string
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore – path literal is required by TanStack Router Vite plugin; routeTree.gen.ts overrides this type
@@ -39,18 +41,25 @@ function IndexPage() {
 
 function Landing() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-950 text-white">
-      <h1 className="text-5xl font-black tracking-tight">
-        Vibe<span className="text-emerald-400">Map</span>
-      </h1>
-      <p className="mt-3 max-w-md text-center text-zinc-400">
-        A live map of your city that gets your mood — and your friends.
-      </p>
-      <SignInButton mode="modal">
-        <button className="mt-8 rounded-2xl bg-emerald-500 px-8 py-3 font-semibold text-zinc-900 transition-all hover:bg-emerald-400">
-          Sign in to explore
-        </button>
-      </SignInButton>
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#0a0a0f] px-6 text-center text-white">
+      <div className="brand-gradient pointer-events-none absolute -top-48 left-1/2 h-[560px] w-[560px] -translate-x-1/2 rounded-full opacity-[0.16] blur-[130px]" />
+      <div className="relative z-10">
+        <span className="rounded-full panel px-4 py-1.5 text-xs font-medium tracking-wide text-white/70">
+          your city, tuned to your mood
+        </span>
+        <h1 className="mt-6 text-6xl font-bold tracking-tight sm:text-7xl">
+          Vibe<span className="brand-text">Map</span>
+        </h1>
+        <p className="mx-auto mt-4 max-w-md text-lg leading-relaxed text-white/55">
+          A living map that surfaces the spots you'll love — matched to how you feel, right now.
+          Then find your people.
+        </p>
+        <SignInButton mode="modal">
+          <button className="btn-accent mt-9 rounded-xl px-9 py-3.5 text-base font-semibold shadow-soft">
+            Sign in to explore
+          </button>
+        </SignInButton>
+      </div>
     </div>
   )
 }
@@ -72,9 +81,12 @@ function VibeMapApp() {
   const [mood, setMood] = useState<MoodType | null>(null)
   const [bounds, setBounds] = useState<Bounds | null>(null)
   const [center, setCenter] = useState({ lat: 40.4168, lng: -3.7038 }) // Madrid default
-  const [selected, setSelected] = useState<(LivePlace & { score?: number; distanceMeters?: number }) | null>(null)
+  const [selected, setSelected] = useState<
+    (LivePlace & { score?: number; distanceMeters?: number }) | null
+  >(null)
   const [showSocial, setShowSocial] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [showRecs, setShowRecs] = useState(true)
   const [shareIntent, setShareIntent] = useState<{
     place: LivePlace | null
     type: 'im_here' | 'intent_to_go'
@@ -89,11 +101,11 @@ function VibeMapApp() {
   }, [])
 
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/users/me') })
+  const onboarded = me.data?.onboardingCompletedAt != null
   useEffect(() => {
     if (me.data && !me.data.onboardingCompletedAt) setShowOnboarding(true)
   }, [me.data])
 
-  // Geolocate once
   useEffect(() => {
     navigator.geolocation?.getCurrentPosition(
       (pos) => {
@@ -106,17 +118,18 @@ function VibeMapApp() {
     )
   }, [])
 
-  // Realtime inbox: chat, friend events, "I'm here" / "intent to go" alerts
   useUserChannel(me.data?.id, (e) => {
     const p = e.payload as Record<string, unknown>
     if (e.event === 'chat_message') pushToast(`💬 ${p.senderName as string}: ${p.content as string}`)
-    else if (e.event === 'friend_request') pushToast(`👋 Friend request from ${(p.from as { name: string }).name}`)
-    else if (e.event === 'friend_accepted') pushToast('🤝 Friend request accepted')
-    else if (e.event === 'im_here') pushToast(`📍 ${(p.from as { name: string }).name} is out — check the map!`)
-    else if (e.event === 'intent_to_go') pushToast(`🚶 ${(p.from as { name: string }).name} is heading somewhere`)
+    else if (e.event === 'friend_request')
+      pushToast(`New friend request from ${(p.from as { name: string }).name}`)
+    else if (e.event === 'friend_accepted') pushToast('Friend request accepted')
+    else if (e.event === 'im_here')
+      pushToast(`${(p.from as { name: string }).name} is out — check the map`)
+    else if (e.event === 'intent_to_go')
+      pushToast(`${(p.from as { name: string }).name} is heading somewhere`)
   })
 
-  // Viewport places — debounced ~400ms; the backend handles geo-cell throttling
   const onMoveEnd = useCallback((e: ViewStateChangeEvent) => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
@@ -134,7 +147,7 @@ function VibeMapApp() {
       api<{ places: LivePlace[] }>(
         `/api/places?north=${bounds!.north}&south=${bounds!.south}&east=${bounds!.east}&west=${bounds!.west}${mood ? `&mood=${mood}` : ''}`,
       ),
-    enabled: !!bounds && me.data?.onboardingCompletedAt != null,
+    enabled: !!bounds && onboarded,
     staleTime: 60_000,
   })
 
@@ -144,13 +157,14 @@ function VibeMapApp() {
       api<{ recommendations: ScoredPlace[] }>(
         `/api/recommendations?mood=${mood}&lat=${center.lat}&lng=${center.lng}&radius=3000`,
       ),
-    enabled: !!mood && me.data?.onboardingCompletedAt != null,
+    enabled: !!mood && onboarded,
     staleTime: 60_000,
   })
 
   const selectMood = useCallback((m: MoodType | null) => {
     setMood(m)
     setSelected(null)
+    setShowRecs(true)
     if (m) api('/api/users/mood', { method: 'POST', body: JSON.stringify({ mood: m }) }).catch(() => undefined)
     else api('/api/users/mood', { method: 'DELETE' }).catch(() => undefined)
   }, [])
@@ -162,15 +176,34 @@ function VibeMapApp() {
     refetchInterval: 30_000,
   })
 
-  const recIds = useMemo(
-    () => new Set((recommendations.data?.recommendations ?? []).map((r) => r.googlePlaceId)),
-    [recommendations.data],
-  )
   const moodMeta = moodById(mood)
+  const recList = recommendations.data?.recommendations ?? []
+
+  const { recRank, recById, dotPlaces } = useMemo(() => {
+    const rank = new Map<string, number>()
+    const byId = new Map<string, ScoredPlace>()
+    recList.forEach((r, i) => {
+      rank.set(r.googlePlaceId, i + 1)
+      byId.set(r.googlePlaceId, r)
+    })
+    const dots = (places.data?.places ?? []).filter((p) => !byId.has(p.googlePlaceId))
+    return { recRank: rank, recById: byId, dotPlaces: dots }
+  }, [recList, places.data])
+
+  const openPlace = useCallback(
+    (p: LivePlace) => setSelected(recById.get(p.googlePlaceId) ?? p),
+    [recById],
+  )
+
+  const flyToPlace = useCallback((p: LivePlace, zoom = 16) => {
+    setSelected(p)
+    setShowSocial(false)
+    mapRef.current?.flyTo({ center: [p.lng, p.lat], zoom })
+  }, [])
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-zinc-950">
-      <Map
+    <div className="relative h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+      <MapGL
         ref={mapRef}
         mapboxAccessToken={MAPBOX_TOKEN}
         initialViewState={{ latitude: center.lat, longitude: center.lng, zoom: 14 }}
@@ -181,8 +214,8 @@ function VibeMapApp() {
           if (b) setBounds({ north: b.getNorth(), south: b.getSouth(), east: b.getEast(), west: b.getWest() })
         }}
       >
-        {(places.data?.places ?? []).map((p) => {
-          const isRec = recIds.has(p.googlePlaceId)
+        {dotPlaces.map((p) => {
+          const isSel = selected?.googlePlaceId === p.googlePlaceId
           return (
             <Marker
               key={p.googlePlaceId}
@@ -190,25 +223,56 @@ function VibeMapApp() {
               longitude={p.lng}
               onClick={(e) => {
                 e.originalEvent.stopPropagation()
-                const rec = recommendations.data?.recommendations.find(
-                  (r) => r.googlePlaceId === p.googlePlaceId,
-                )
-                setSelected(rec ?? p)
+                openPlace(p)
               }}
             >
               <div
-                className="cursor-pointer rounded-full border-2 transition-transform hover:scale-125"
+                className={`cursor-pointer rounded-full transition-transform hover:scale-150 ${
+                  isSel ? 'ring-2 ring-white' : ''
+                }`}
                 style={{
-                  width: isRec ? 18 : 11,
-                  height: isRec ? 18 : 11,
-                  backgroundColor: isRec && moodMeta ? moodMeta.color : '#71717a',
-                  borderColor: isRec ? 'white' : '#3f3f46',
-                  boxShadow: isRec && moodMeta ? `0 0 12px ${moodMeta.color}` : undefined,
+                  width: isSel ? 12 : 8,
+                  height: isSel ? 12 : 8,
+                  background: 'rgba(255,255,255,0.6)',
+                  border: '1px solid rgba(0,0,0,0.35)',
                 }}
               />
             </Marker>
           )
         })}
+
+        {recList.map((r) => {
+          const rank = recRank.get(r.googlePlaceId)
+          const isSel = selected?.googlePlaceId === r.googlePlaceId
+          const color = moodMeta?.color ?? '#7c6cff'
+          return (
+            <Marker
+              key={`rec-${r.googlePlaceId}`}
+              latitude={r.lat}
+              longitude={r.lng}
+              onClick={(e) => {
+                e.originalEvent.stopPropagation()
+                setSelected(r)
+              }}
+            >
+              <div className="relative flex cursor-pointer items-center justify-center">
+                <span
+                  className="animate-rec-ping absolute h-7 w-7 rounded-full"
+                  style={{ background: color }}
+                />
+                <span
+                  className={`relative flex items-center justify-center rounded-full text-[11px] font-bold text-white shadow-lg transition-transform hover:scale-110 ${
+                    isSel ? 'scale-110 ring-2 ring-white' : 'ring-2 ring-white/70'
+                  }`}
+                  style={{ width: 28, height: 28, background: color }}
+                >
+                  {rank}
+                </span>
+              </div>
+            </Marker>
+          )
+        })}
+
         {(shares.data?.incoming ?? [])
           .filter((s) => s.last_known_lat != null && s.last_known_lng != null)
           .map((s) => (
@@ -221,53 +285,71 @@ function VibeMapApp() {
               </div>
             </Marker>
           ))}
-      </Map>
+      </MapGL>
 
-      {/* Top bar */}
-      <div className="pointer-events-none absolute inset-x-0 top-4 flex items-start justify-between px-4">
-        <div className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/80 px-4 py-2 shadow-2xl backdrop-blur-md">
-          <span className="font-black text-white">
-            Vibe<span className="text-emerald-400">Map</span>
+      {/* top gradient for legibility */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/40 to-transparent" />
+
+      {/* top-left: brand + search */}
+      <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-2">
+        <div className="pointer-events-auto inline-flex w-fit items-center rounded-xl panel px-3 py-1.5 shadow-soft">
+          <span className="text-[15px] font-bold tracking-tight text-white">
+            Vibe<span className="brand-text">Map</span>
           </span>
         </div>
-        <MoodBar active={mood} onSelect={selectMood} />
-        <div className="pointer-events-auto flex items-center gap-2">
-          <button
-            onClick={() => setShowSocial((v) => !v)}
-            className="rounded-2xl border border-white/10 bg-zinc-900/80 px-4 py-2 text-sm text-white shadow-2xl backdrop-blur-md hover:bg-zinc-800"
-          >
-            👥 Friends
-          </button>
-          <button
-            onClick={() => setShowOnboarding(true)}
-            className="rounded-2xl border border-white/10 bg-zinc-900/80 px-4 py-2 text-sm text-white shadow-2xl backdrop-blur-md hover:bg-zinc-800"
-            title="Edit interests"
-          >
-            ✨
-          </button>
-          <div className="rounded-2xl border border-white/10 bg-zinc-900/80 p-1.5 shadow-2xl backdrop-blur-md">
-            <UserButton />
-          </div>
+        <SearchBar center={center} onPick={(p) => flyToPlace(p)} />
+      </div>
+
+      {/* top-right: actions */}
+      <div className="pointer-events-auto absolute right-4 top-4 flex items-center gap-2">
+        <button
+          onClick={() => {
+            setShowSocial((v) => !v)
+            setSelected(null)
+          }}
+          className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold shadow-soft transition ${
+            showSocial ? 'btn-accent' : 'panel text-white/85 hover:text-white'
+          }`}
+        >
+          <IconPeople width={17} height={17} />
+          <span className="hidden sm:inline">People</span>
+        </button>
+        <button
+          onClick={() => setShowOnboarding(true)}
+          className="inline-flex items-center justify-center rounded-xl panel p-2.5 text-white/85 shadow-soft transition hover:text-white"
+          title="Edit interests"
+        >
+          <IconSparkle width={17} height={17} />
+        </button>
+        <div className="rounded-xl panel p-1.5 shadow-soft">
+          <UserButton />
         </div>
       </div>
 
-      {/* Left: recommendations */}
-      {mood && (
-        <div className="pointer-events-none absolute left-4 top-20">
+      {/* left rail: recommendations (below search) */}
+      {mood && showRecs && (
+        <div className="absolute left-4 top-32">
           <RecommendationsPanel
             mood={mood}
-            recommendations={recommendations.data?.recommendations ?? []}
+            recommendations={recList}
             isLoading={recommendations.isLoading}
-            onPick={(r) => {
-              setSelected(r)
-              mapRef.current?.flyTo({ center: [r.lng, r.lat], zoom: 16 })
-            }}
+            selectedId={selected?.googlePlaceId}
+            onClose={() => setShowRecs(false)}
+            onPick={(r) => flyToPlace(r)}
           />
         </div>
       )}
+      {mood && !showRecs && (
+        <button
+          onClick={() => setShowRecs(true)}
+          className="absolute left-4 top-32 inline-flex items-center gap-2 rounded-xl panel px-4 py-2.5 text-sm font-semibold text-white shadow-soft hover:bg-white/[0.06]"
+        >
+          <span>{moodMeta?.emoji}</span> Show picks
+        </button>
+      )}
 
-      {/* Right: place detail / social */}
-      <div className="pointer-events-none absolute right-4 top-20 flex flex-col gap-3">
+      {/* right: place detail / social */}
+      <div className="absolute right-4 top-[4.75rem] flex flex-col gap-3">
         {showSocial && me.data && (
           <SocialPanel
             meId={me.data.id}
@@ -285,9 +367,15 @@ function VibeMapApp() {
         )}
       </div>
 
+      {/* bottom: mood selector */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center px-4">
+        <MoodBar active={mood} onSelect={selectMood} />
+      </div>
+
       {showOnboarding && (
         <OnboardingModal
           initialTags={me.data?.interests.map((i) => i.tag)}
+          editing={onboarded}
           onDone={() => setShowOnboarding(false)}
         />
       )}

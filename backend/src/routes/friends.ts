@@ -40,22 +40,27 @@ friendsRouter.get('/', requireUser, async (req, res, next) => {
   }
 })
 
-const requestSchema = z.object({ email: z.string().email() })
+const requestSchema = z
+  .object({
+    email: z.string().email().optional(),
+    userId: z.string().uuid().optional(),
+  })
+  .refine((d) => d.email || d.userId, { message: 'email or userId required' })
 
-/** POST /api/friends/requests — send a friend request by email */
+/** POST /api/friends/requests — send a friend request by email or userId */
 friendsRouter.post('/requests', requireUser, async (req, res, next) => {
   try {
     const parsed = requestSchema.safeParse(req.body)
     if (!parsed.success) {
-      res.status(400).json({ error: 'Invalid email' })
+      res.status(400).json({ error: 'Provide a valid email or userId' })
       return
     }
     const me = req.appUser!
-    const { data: target, error } = await supabase
-      .from('user')
-      .select('id, name')
-      .eq('email', parsed.data.email)
-      .maybeSingle()
+    const lookup = supabase.from('user').select('id, name')
+    const { data: target, error } = await (parsed.data.userId
+      ? lookup.eq('id', parsed.data.userId)
+      : lookup.eq('email', parsed.data.email!)
+    ).maybeSingle()
     if (error) throw error
     if (!target) {
       res.status(404).json({ error: 'No user with that email' })

@@ -28,6 +28,82 @@ usersRouter.get('/me', requireUser, async (req, res, next) => {
   }
 })
 
+/**
+ * GET /api/users/discover — browse other users to add as friends.
+ * Returns each user's public interests + current mood, annotated with the
+ * viewer's relationship (none | outgoing | incoming | friends | blocked).
+ */
+usersRouter.get('/discover', requireUser, async (req, res, next) => {
+  try {
+    const me = req.appUser!
+
+    const { data: users, error } = await supabase
+      .from('user')
+      .select('id, name')
+      .neq('id', me.id)
+      .limit(200)
+    if (error) throw error
+    const ids = (users ?? []).map((u) => u.id)
+    if (ids.length === 0) {
+      res.json({ users: [] })
+      return
+    }
+
+    const [{ data: friendships }, { data: interests }, { data: moods }] = await Promise.all([
+      supabase
+        .from('friendship')
+        .select('user_low_id, user_high_id, status, requested_by')
+        .or(`user_low_id.eq.${me.id},user_high_id.eq.${me.id}`),
+      supabase.from('user_interest').select('user_id, tag').in('user_id', ids),
+      supabase
+        .from('mood_session')
+        .select('user_id, mood_type, started_at')
+        .in('user_id', ids)
+        .is('ended_at', null)
+        .order('started_at', { ascending: false }),
+    ])
+
+    const relationship = new Map<string, string>()
+    for (const f of friendships ?? []) {
+      const other = f.user_low_id === me.id ? f.user_high_id : f.user_low_id
+      if (f.status === 'accepted') relationship.set(other, 'friends')
+      else if (f.status === 'blocked') relationship.set(other, 'blocked')
+      else relationship.set(other, f.requested_by === me.id ? 'outgoing' : 'incoming')
+    }
+
+    const interestsByUser = new Map<string, string[]>()
+    for (const r of interests ?? []) {
+      const arr = interestsByUser.get(r.user_id) ?? []
+      arr.push(r.tag)
+      interestsByUser.set(r.user_id, arr)
+    }
+
+    const moodByUser = new Map<string, string>()
+    for (const m of moods ?? []) {
+      if (!moodByUser.has(m.user_id)) moodByUser.set(m.user_id, m.mood_type)
+    }
+
+    const result = (users ?? [])
+      .map((u) => ({
+        id: u.id,
+        name: u.name,
+        interests: interestsByUser.get(u.id) ?? [],
+        mood: moodByUser.get(u.id) ?? null,
+        relationship: relationship.get(u.id) ?? 'none',
+      }))
+      // surface people you can actually act on first (not-yet-friends, richer profiles)
+      .sort((a, b) => {
+        const rank = (r: string) => (r === 'none' || r === 'incoming' ? 0 : 1)
+        if (rank(a.relationship) !== rank(b.relationship)) return rank(a.relationship) - rank(b.relationship)
+        return b.interests.length - a.interests.length
+      })
+
+    res.json({ users: result })
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** GET /api/users/interests/vocabulary — available interest tags */
 usersRouter.get('/interests/vocabulary', requireUser, async (_req, res, next) => {
   try {

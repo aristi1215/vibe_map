@@ -47,18 +47,18 @@ export function ShareModal({ place, shareType, position, onClose }: Props) {
     })
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-zinc-900 p-6 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
+      <div className="animate-pop-in w-full max-w-md rounded-2.5xl panel-solid p-6 shadow-2xl">
         <h3 className="text-lg font-bold text-white">
           {shareType === 'im_here' ? "📍 Tell friends you're here" : "🚶 Tell friends you're heading there"}
         </h3>
-        <p className="mt-1 text-sm text-zinc-400">
+        <p className="mt-1 text-sm text-white/55">
           {place ? place.name : 'Your current location'} · visible for 1 hour · only to the friends
           you pick
         </p>
-        <div className="mt-4 max-h-64 space-y-2 overflow-y-auto">
+        <div className="thin-scroll mt-4 max-h-64 space-y-2 overflow-y-auto">
           {friends.data?.friends.length === 0 && (
-            <p className="text-sm text-zinc-500">Add friends first to share your location.</p>
+            <p className="text-sm text-white/45">Add friends first to share your location.</p>
           )}
           {friends.data?.friends.map((f) => (
             <label
@@ -69,7 +69,7 @@ export function ShareModal({ place, shareType, position, onClose }: Props) {
                 type="checkbox"
                 checked={selected.has(f.user.id)}
                 onChange={() => toggle(f.user.id)}
-                className="h-4 w-4 accent-emerald-500"
+                className="h-4 w-4 accent-[#7c6cff]"
               />
               <span className="text-sm text-white">{f.user.name}</span>
             </label>
@@ -79,13 +79,13 @@ export function ShareModal({ place, shareType, position, onClose }: Props) {
           <p className="mt-3 text-sm text-rose-400">{(share.error as Error).message}</p>
         )}
         <div className="mt-6 flex justify-end gap-3">
-          <button onClick={onClose} className="rounded-xl px-4 py-2 text-sm text-zinc-400 hover:text-white">
+          <button onClick={onClose} className="rounded-xl px-4 py-2 text-sm text-white/55 hover:text-white">
             Cancel
           </button>
           <button
             disabled={selected.size === 0 || share.isPending}
             onClick={() => share.mutate()}
-            className="rounded-xl bg-emerald-500 px-5 py-2 text-sm font-semibold text-zinc-900 hover:bg-emerald-400 disabled:opacity-40"
+            className="btn-accent rounded-xl px-5 py-2 text-sm font-bold disabled:opacity-40"
           >
             {share.isPending ? 'Sharing…' : 'Share'}
           </button>

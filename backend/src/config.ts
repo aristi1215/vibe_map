@@ -1,6 +1,12 @@
 export const config = {
   /** Geo-cell throttle TTL — a cell queried within this window is skipped (§2.2.1) */
   geoCellTtlMinutes: 20,
+  /**
+   * In-memory live-result cache TTL (seconds). Live Google content can't be
+   * persisted, so this short RAM cache is what actually throttles the Places API
+   * while still returning renderable places on every request.
+   */
+  liveCacheTtlSeconds: 90,
   /** Fixed grid cell size in degrees (~2.2km at equator) */
   geoCellSizeDeg: 0.02,
   /** Confidence constant for behavioral vector weighting (§2.3.2, K ≈ 10) */
@@ -29,4 +35,18 @@ export const config = {
   embeddingDim: 3072,
   /** Top-N recommendations returned/highlighted */
   recommendationLimit: 20,
+  /** RAM cache TTL (hours) for per-place embeddings derived from Google content */
+  placeEmbTtlHours: 6,
+  /**
+   * Ranking weights for the request-time recommender. Each component is min-max
+   * normalized across the candidate set before weighting, so they sum to 1.
+   */
+  recWeights: {
+    /** semantic match to the selected mood's vibe */
+    vibe: 0.4,
+    /** match to the user's explicit interests + learned preference vector */
+    preference: 0.38,
+    /** Google rating × review-count confidence */
+    quality: 0.22,
+  },
 }

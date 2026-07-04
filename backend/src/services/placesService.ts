@@ -11,13 +11,17 @@ import { searchNearby, type LivePlace } from './googlePlaces.js'
 /**
  * Live-fetch with geo-cell throttling (§2.2.1).
  *
- * For each cell intersecting the viewport:
- *   - if the cell was queried within the TTL window → skip the API call
- *   - else → call Places API, upsert SKELETON rows (place_id + coords only),
- *     stamp GeoCacheZone.last_queried_at
+ * Live Google content (name/category/hours) may NOT be persisted (§2.2), so the
+ * DB cannot serve as a rendering cache — a cell we already fetched has no content
+ * to replay. Throttling therefore uses a short-lived IN-MEMORY cache (process RAM
+ * only, never written to disk/DB) so that:
+ *   - every viewport request returns fully-rendered live places (fixes blank map)
+ *   - repeated pans / the recommendation pass don't hammer the Places API
  *
- * Live Google content (name/category/hours) is returned to the caller for this
- * request only and discarded afterwards — it is never persisted (§2.2).
+ * For each cell intersecting the viewport:
+ *   - if we fetched it within MEM_TTL (keyed by mood/includedTypes) → replay RAM copy
+ *   - else → call Places API, cache in RAM, upsert SKELETON rows (place_id + coords
+ *     only), stamp GeoCacheZone for analytics/behavioral bookkeeping
  */
 
 export interface PlaceWithSkeleton extends LivePlace {
@@ -25,36 +29,57 @@ export interface PlaceWithSkeleton extends LivePlace {
   placeId: string | null
 }
 
+/** Ephemeral in-process cache of live results — RAM only, evicted on TTL. */
+interface CacheEntry {
+  at: number
+  places: LivePlace[]
+}
+const liveCellCache = new Map<string, CacheEntry>()
+
+function cellCacheKey(cellId: string, includedTypes: string[] | undefined, rich: boolean): string {
+  return `${rich ? 'R' : 'B'}:${cellId}::${(includedTypes ?? []).slice().sort().join(',')}`
+}
+
+function pruneCache(now: number, ttlMs: number): void {
+  if (liveCellCache.size < 500) return
+  for (const [key, entry] of liveCellCache) {
+    if (now - entry.at >= ttlMs) liveCellCache.delete(key)
+  }
+}
+
 export async function fetchViewportPlaces(
   bounds: Bounds,
   includedTypes?: string[],
+  opts: { rich?: boolean } = {},
 ): Promise<PlaceWithSkeleton[]> {
+  const rich = opts.rich ?? false
   const cellIds = cellsForBounds(bounds)
   if (cellIds.length === 0) return []
 
-  const { data: zones, error: zoneError } = await supabase
-    .from('geo_cache_zone')
-    .select('cell_id, last_queried_at')
-    .in('cell_id', cellIds)
-  if (zoneError) throw zoneError
-
-  const ttlMs = config.geoCellTtlMinutes * 60_000
+  const ttlMs = config.liveCacheTtlSeconds * 1000
   const now = Date.now()
-  const fresh = new Set(
-    (zones ?? [])
-      .filter((z) => z.last_queried_at && now - new Date(z.last_queried_at).getTime() < ttlMs)
-      .map((z) => z.cell_id),
-  )
-  const staleCells = cellIds.filter((c) => !fresh.has(c))
+  pruneCache(now, ttlMs)
 
-  const livePlaces = new Map<string, LivePlace>()
   const radius = cellRadiusMeters()
+  const livePlaces = new Map<string, LivePlace>()
+  const cellsToFetch: string[] = []
+
+  // Replay any cells still warm in RAM; queue the rest for a live fetch.
+  for (const cellId of cellIds) {
+    const hit = liveCellCache.get(cellCacheKey(cellId, includedTypes, rich))
+    if (hit && now - hit.at < ttlMs) {
+      for (const p of hit.places) livePlaces.set(p.googlePlaceId, p)
+    } else {
+      cellsToFetch.push(cellId)
+    }
+  }
 
   await Promise.all(
-    staleCells.map(async (cellId) => {
+    cellsToFetch.map(async (cellId) => {
       const { lat, lng } = cellCenter(cellId)
       try {
-        const results = await searchNearby(lat, lng, radius, includedTypes)
+        const results = await searchNearby(lat, lng, radius, includedTypes, { rich })
+        liveCellCache.set(cellCacheKey(cellId, includedTypes, rich), { at: Date.now(), places: results })
         for (const p of results) livePlaces.set(p.googlePlaceId, p)
         await upsertSkeletons(results)
         await supabase
@@ -101,7 +126,7 @@ async function attachSkeletonIds(places: LivePlace[]): Promise<PlaceWithSkeleton
   return places.map((p) => ({ ...p, placeId: byGoogleId.get(p.googlePlaceId) ?? null }))
 }
 
-/** Fetch places around a point (used by recommendations Stage 1). */
+/** Fetch places around a point (used by recommendations Stage 1 — rich fields). */
 export async function fetchNearbyPlaces(
   lat: number,
   lng: number,
@@ -117,5 +142,6 @@ export async function fetchNearbyPlaces(
       west: lng - degRadius / Math.max(Math.cos((lat * Math.PI) / 180), 0.01),
     },
     includedTypes,
+    { rich: true },
   )
 }

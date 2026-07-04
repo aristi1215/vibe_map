@@ -20,11 +20,38 @@ export interface LivePlace {
   lng: number
   openNow: boolean | null
   address: string | null
+  rating?: number | null
+  userRatingCount?: number | null
+  priceLevel?: string | null
+  editorialSummary?: string | null
 }
 
 export interface ScoredPlace extends LivePlace {
   score: number
   distanceMeters: number
+}
+
+export interface PlaceReview {
+  rating: number | null
+  text: string | null
+  author: string | null
+  authorPhoto: string | null
+  relativeTime: string | null
+}
+
+export interface RichPlaceDetails extends LivePlace {
+  rating: number | null
+  userRatingCount: number | null
+  priceLevel: string | null
+  editorialSummary: string | null
+  formattedAddress: string | null
+  weekdayDescriptions: string[]
+  phone: string | null
+  website: string | null
+  googleMapsUri: string | null
+  photoUrls: string[]
+  reviews: PlaceReview[]
+  placeId: string | null
 }
 
 export interface Me {
@@ -39,6 +66,20 @@ export interface FriendEntry {
   friendshipId: string
   user: { id: string; name: string; email: string }
   since: string
+}
+
+export type Relationship = 'none' | 'outgoing' | 'incoming' | 'friends' | 'blocked'
+
+export interface DiscoverUser {
+  id: string
+  name: string
+  interests: string[]
+  mood: MoodType | null
+  relationship: Relationship
+}
+
+export interface DiscoverResponse {
+  users: DiscoverUser[]
 }
 
 export interface FriendsResponse {

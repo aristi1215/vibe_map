@@ -1,4 +1,6 @@
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001'
+const RAW_API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001'
+// Strip any trailing slash so `${API_BASE}${path}` never produces a double slash.
+const API_BASE = RAW_API_BASE.replace(/\/+$/, '')
 
 type TokenGetter = () => Promise<string | null>
 
