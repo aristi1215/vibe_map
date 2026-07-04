@@ -36,6 +36,13 @@ app.use('/api/chat', chatRouter)
 app.use('/api/location', locationRouter)
 app.use('/api/busyness', busynessRouter)
 
+app.use(
+  (err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error(err)
+    res.status(500).json({ error: 'Internal server error' })
+  },
+)
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`)
 })
