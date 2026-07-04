@@ -18,6 +18,10 @@ export const config = {
   alphaNegative: 0.05,
   /** mean-of-top-k interest similarities used for explicit_score (§2.3.3) */
   topKInterests: 3,
+  /** A place whose latest alignment rating (for the active mood) is ≤ this is hard-excluded */
+  dislikedRatingMax: 2,
+  /** Score multiplier for places last rated 3 ("meh") in the active mood */
+  mediocrePenalty: 0.75,
   /** Crowd report recency half-life in minutes (§2.4.1) */
   busynessHalfLifeMinutes: 25,
   /** Minimum unique reporters within the last hour (§2.4) */
@@ -43,10 +47,19 @@ export const config = {
    */
   recWeights: {
     /** semantic match to the selected mood's vibe */
-    vibe: 0.4,
-    /** match to the user's explicit interests + learned preference vector */
-    preference: 0.38,
+    vibe: 0.28,
+    /**
+     * match to the user's explicit interests + learned preference vector.
+     * Deliberately the dominant weight: vibe + quality are identical for every
+     * user in the same mood/location, so this is the only component that makes
+     * two users' recommendations differ.
+     */
+    preference: 0.52,
     /** Google rating × review-count confidence */
-    quality: 0.22,
+    quality: 0.2,
   },
+  /** share of the explicit-interest score carried by interest↔category affinity (vs place-text similarity) */
+  categoryAffinityShare: 0.5,
+  /** top-N interest-affine mood categories get a dedicated Stage-1 fetch of their own */
+  preferredCategoryCount: 3,
 }

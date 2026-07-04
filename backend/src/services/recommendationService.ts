@@ -31,21 +31,57 @@ export async function recommend(
   radiusMeters: number,
   moodSessionId: string | null,
 ): Promise<ScoredPlace[]> {
-  // ---- Stage 1: hard filtering (live, ephemeral) ----
   const categories = MOOD_CATEGORIES[mood]
-  const places = await fetchNearbyPlaces(lat, lng, radiusMeters, categories)
-  const candidates = places.filter((p) => {
+
+  // Interest → category affinity comes first: it steers both WHAT gets fetched
+  // and how candidates are ranked, so a "nightlife + dancing" user in a social
+  // mood is supplied and scored toward night clubs — not the same popular
+  // restaurants as everyone else.
+  const [interests, priors, feedback] = await Promise.all([
+    loadUserInterestVectors(userId),
+    loadCategoryPriors(),
+    loadPlaceFeedback(userId, mood),
+  ])
+  const catAffinity = new Map<string, number>()
+  if (interests.length > 0) {
+    for (const cat of categories) {
+      const prior = priors.get(cat)
+      if (prior)
+        catAffinity.set(cat, meanTopK(interests.map((iv) => cosineSim(iv, prior)), config.topKInterests))
+    }
+  }
+  const preferredCats = [...catAffinity.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, config.preferredCategoryCount)
+    .map(([key]) => key)
+
+  // ---- Stage 1: hard filtering (live, ephemeral) ----
+  // Google returns ~20 popularity-ranked places per cell, so abundant categories
+  // (restaurants) crowd rarer preferred ones (night clubs) out of the candidate
+  // pool entirely. A second fetch restricted to the user's top-affinity
+  // categories guarantees their kind of place is in the pool to be ranked.
+  const fetches = [fetchNearbyPlaces(lat, lng, radiusMeters, categories)]
+  if (preferredCats.length > 0 && preferredCats.length < categories.length) {
+    fetches.push(fetchNearbyPlaces(lat, lng, radiusMeters, preferredCats))
+  }
+  const uniquePlaces = new Map<string, PlaceWithSkeleton>()
+  for (const batch of await Promise.all(fetches)) {
+    for (const p of batch) uniquePlaces.set(p.googlePlaceId, p)
+  }
+  const candidates = [...uniquePlaces.values()].filter((p) => {
     if (p.placeId === null) return false
     if (p.openNow === false) return false // unknown hours (null) are kept
     if (!moodMatches(mood, p.category, p.types)) return false
+    const fb = feedback.get(p.placeId)
+    if (fb && (fb.stronglyDisliked || (fb.latestForMood != null && fb.latestForMood <= config.dislikedRatingMax)))
+      return false // the user told us they don't like this place — never resurface it
     return haversineMeters(lat, lng, p.lat, p.lng) <= radiusMeters
   })
   if (candidates.length === 0) return []
 
   // ---- Stage 2: semantic ranking ----
-  const [moodVec, interests, learned, placeEmbs] = await Promise.all([
+  const [moodVec, learned, placeEmbs] = await Promise.all([
     embedOnce(`mood:${mood}`, MOOD_DESCRIPTORS[mood]),
-    loadUserInterestVectors(userId),
     loadLearnedVector(userId, mood),
     embedPlaces(candidates.map((c) => ({ id: c.googlePlaceId, text: placeText(c) }))),
   ])
@@ -66,14 +102,23 @@ export async function recommend(
 
     const vibe = cosineSim(emb, moodVec)
 
-    const interestSim =
+    const textSim =
       interests.length > 0
         ? meanTopK(interests.map((iv) => cosineSim(emb, iv)), config.topKInterests)
         : null
+    // Category affinity is the crisp half of the explicit signal — it cleanly
+    // separates a night club from a restaurant where place-text similarity is fuzzy.
+    const catKey = matchedMoodCategory(c, categories)
+    const catAff = catKey != null ? (catAffinity.get(catKey) ?? null) : null
+    let explicitSim: number | null
+    if (textSim != null && catAff != null)
+      explicitSim = (1 - config.categoryAffinityShare) * textSim + config.categoryAffinityShare * catAff
+    else explicitSim = textSim ?? catAff
+
     const learnedSim = learned ? cosineSim(emb, learned.vector) : null
     let pref: number | null
-    if (interestSim != null && learnedSim != null) pref = (1 - wLearned) * interestSim + wLearned * learnedSim
-    else pref = interestSim ?? learnedSim
+    if (explicitSim != null && learnedSim != null) pref = (1 - wLearned) * explicitSim + wLearned * learnedSim
+    else pref = explicitSim ?? learnedSim
 
     raw.push({ place: c, vibe, pref, quality: qualityScore(c.rating, c.userRatingCount) })
   }
@@ -93,11 +138,16 @@ export async function recommend(
   const prefN = minMax(raw.map((r) => r.pref))
   const qualN = minMax(raw.map((r) => r.quality))
 
-  const scored: ScoredPlace[] = raw.map((r, i) => ({
-    ...r.place,
-    score: wVibe * vibeN[i] + wPref * prefN[i] + wQual * qualN[i],
-    distanceMeters: Math.round(haversineMeters(lat, lng, r.place.lat, r.place.lng)),
-  }))
+  const scored: ScoredPlace[] = raw.map((r, i) => {
+    let score = wVibe * vibeN[i] + wPref * prefN[i] + wQual * qualN[i]
+    const fb = r.place.placeId ? feedback.get(r.place.placeId) : undefined
+    if (fb?.latestForMood === 3) score *= config.mediocrePenalty // rated "meh" for this mood
+    return {
+      ...r.place,
+      score,
+      distanceMeters: Math.round(haversineMeters(lat, lng, r.place.lat, r.place.lng)),
+    }
+  })
 
   scored.sort((a, b) => b.score - a.score)
   const top = scored.slice(0, config.recommendationLimit)
@@ -127,6 +177,64 @@ function minMax(values: (number | null)[]): number[] {
   const max = Math.max(...nums)
   if (max - min < 1e-9) return values.map(() => 0.5)
   return values.map((v) => (v == null ? 0.5 : (v - min) / (max - min)))
+}
+
+/** The mood category a candidate matched Stage-1 filtering through. */
+function matchedMoodCategory(p: PlaceWithSkeleton, categories: string[]): string | null {
+  if (p.category && categories.includes(p.category)) return p.category
+  return p.types.find((t) => categories.includes(t)) ?? null
+}
+
+/** category_vibe_prior vectors — seeded once, cached for process life. */
+let categoryPriorCache: Map<string, Vec> | null = null
+async function loadCategoryPriors(): Promise<Map<string, Vec>> {
+  if (categoryPriorCache) return categoryPriorCache
+  const { data, error } = await supabase.from('category_vibe_prior').select('category_key, vector')
+  if (error) throw error
+  const map = new Map<string, Vec>()
+  for (const row of data ?? []) {
+    const v = parseVector(row.vector)
+    if (v) map.set(row.category_key, v)
+  }
+  categoryPriorCache = map
+  return map
+}
+
+interface PlaceFeedback {
+  /** latest alignment rating the user gave this place for the ACTIVE mood */
+  latestForMood: number | null
+  /** latest rating in ANY mood is 1 — "never show me this again" */
+  stronglyDisliked: boolean
+}
+
+/**
+ * The user's own verdicts, straight from their visit history. Vector nudges alone
+ * are too weak to displace a popular place, so explicit dislikes become hard
+ * exclusions: latest rating ≤ dislikedRatingMax for this mood hides it in this
+ * mood; a latest rating of 1 in any mood hides it everywhere. Latest-wins, so a
+ * later good rating restores the place.
+ */
+async function loadPlaceFeedback(userId: string, mood: MoodType): Promise<Map<string, PlaceFeedback>> {
+  const { data, error } = await supabase
+    .from('visit')
+    .select('place_id, mood_at_visit, alignment_rating, visited_at')
+    .eq('user_id', userId)
+    .order('visited_at', { ascending: false })
+    .limit(1000)
+  if (error) throw error
+
+  const seen = new Set<string>() // first row per (place, mood) is the latest visit
+  const out = new Map<string, PlaceFeedback>()
+  for (const row of data ?? []) {
+    const key = `${row.place_id}|${row.mood_at_visit}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const fb = out.get(row.place_id) ?? { latestForMood: null, stronglyDisliked: false }
+    if (row.mood_at_visit === mood) fb.latestForMood = row.alignment_rating
+    if (row.alignment_rating === 1) fb.stronglyDisliked = true
+    out.set(row.place_id, fb)
+  }
+  return out
 }
 
 /** Explicit multi-modal interest set — never averaged into one point (§2.3.3). */

@@ -10,6 +10,7 @@ import {
   toVectorLiteral,
   type Vec,
 } from '../lib/vector.js'
+import { embedPlaces } from '../lib/embeddings.js'
 import { getPlaceDetails } from './googlePlaces.js'
 import { normalizeCategory } from './moodMapping.js'
 import type { MoodType } from '../types/index.js'
@@ -49,31 +50,46 @@ async function composePlaceVectorForFeedback(placeId: string): Promise<Vec | nul
   const behavioral = parseVector(place.behavioral_vector)
   const evidenceCount = place.behavioral_evidence_count as number
 
-  let categoryPrior: Vec | null = null
+  let contentVector: Vec | null = null
   try {
     const live = await getPlaceDetails(place.google_place_id)
     if (live) {
-      const { data: priors } = await supabase.from('category_vibe_prior').select('category_key')
-      const known = new Set((priors ?? []).map((p) => p.category_key))
-      const key = normalizeCategory(live.category, live.types, known)
-      if (key) {
-        const { data: prior } = await supabase
-          .from('category_vibe_prior')
-          .select('vector')
-          .eq('category_key', key)
-          .single()
-        categoryPrior = prior ? parseVector(prior.vector) : null
+      // Prefer the SAME per-place text embedding the ranker scores against, so
+      // feedback moves the user vector in the exact space recommendations are
+      // ranked in. Keyed by google place id, this is normally a RAM-cache hit
+      // (the place was just recommended); on a miss it embeds the live text.
+      try {
+        const category = (live.category ?? live.types[0] ?? 'place').split('_').join(' ')
+        const text = `${live.name}. Category: ${category}.`
+        const embs = await embedPlaces([{ id: live.googlePlaceId, text }])
+        contentVector = embs.get(live.googlePlaceId) ?? null
+      } catch (err) {
+        console.error('place embedding failed during feedback, falling back to category prior:', err)
+      }
+
+      if (!contentVector) {
+        const { data: priors } = await supabase.from('category_vibe_prior').select('category_key')
+        const known = new Set((priors ?? []).map((p) => p.category_key))
+        const key = normalizeCategory(live.category, live.types, known)
+        if (key) {
+          const { data: prior } = await supabase
+            .from('category_vibe_prior')
+            .select('vector')
+            .eq('category_key', key)
+            .single()
+          contentVector = prior ? parseVector(prior.vector) : null
+        }
       }
     }
   } catch (err) {
     console.error('live category lookup failed during feedback:', err)
   }
 
-  if (!categoryPrior && !behavioral) return null
-  if (!categoryPrior) return normalize(behavioral!)
-  if (!behavioral || evidenceCount === 0) return normalize(categoryPrior)
+  if (!contentVector && !behavioral) return null
+  if (!contentVector) return normalize(behavioral!)
+  if (!behavioral || evidenceCount === 0) return normalize(contentVector)
   const w = evidenceCount / (evidenceCount + config.K)
-  return normalize(add(scale(categoryPrior, 1 - w), scale(behavioral, w)))
+  return normalize(add(scale(contentVector, 1 - w), scale(behavioral, w)))
 }
 
 /** (1) Nudge the user's vector for THIS mood only — lazily created (§2.3.3–2.3.4). */
@@ -101,7 +117,14 @@ async function updateUserMoodVector(
       .single()
     current = parseVector(user?.base_preference_vector ?? null)
   }
-  if (!current) current = placeVector // first-ever signal: seed from the place itself
+  if (!current) {
+    // First-ever signal. A positive can seed from the place itself, but a negative
+    // must NOT: normalize(place·(1−α) − place·α) IS the disliked place's vector,
+    // which would teach the system to recommend more places like the one the user
+    // just rejected. With nothing to push away from, skip the update.
+    if (direction < 0) return
+    current = placeVector
+  }
 
   const updated = normalize(add(scale(current, 1 - alpha), scale(placeVector, alpha * direction)))
 

@@ -63,6 +63,8 @@ export function PlaceDetailPanel({ place, activeMood, onClose, onShare }: Props)
         method: 'POST',
         body: JSON.stringify({ placeId, mood: activeMood, rating: value }),
       }),
+    // Re-rank immediately so a just-disliked place drops off the list and map
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recommendations'] }),
   })
 
   const rat = d?.rating ?? place.rating ?? null

@@ -23,12 +23,20 @@ const allowedOrigins = (process.env.FRONTEND_URL ?? 'http://localhost:5173')
   .map((o) => o.trim())
   .filter(Boolean)
 
+function isAllowedOrigin(origin: string): boolean {
+  if (allowedOrigins.includes(origin)) return true
+  if (/^http:\/\/localhost:\d+$/.test(origin)) return true
+  // Vercel production + preview deployments (*.vercel.app)
+  if (/^https:\/\/[\w.-]+\.vercel\.app$/.test(origin)) return true
+  return false
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow non-browser requests (no Origin header), any configured origin,
-      // and any localhost port so Vite's auto-incremented dev ports (5174, …) work.
-      if (!origin || allowedOrigins.includes(origin) || /^http:\/\/localhost:\d+$/.test(origin)) {
+      // Allow non-browser requests (no Origin header), configured origins,
+      // localhost dev ports, and Vercel preview/production URLs.
+      if (!origin || isAllowedOrigin(origin)) {
         callback(null, true)
       } else {
         callback(new Error(`Not allowed by CORS: ${origin}`))
