@@ -10,7 +10,8 @@ interface Props {
   onClose: () => void
 }
 
-export function ShareModal({ place, shareType, position, onClose }: Props) {
+/** Bottom-sheet picker for which friends see a location share. */
+export function ShareSheet({ place, shareType, position, onClose }: Props) {
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
@@ -47,45 +48,52 @@ export function ShareModal({ place, shareType, position, onClose }: Props) {
     })
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-zinc-900 p-6 shadow-2xl">
-        <h3 className="text-lg font-bold text-white">
-          {shareType === 'im_here' ? "📍 Tell friends you're here" : "🚶 Tell friends you're heading there"}
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 backdrop-blur-sm sm:items-center sm:p-6">
+      <div className="animate-pop-in w-full max-w-md rounded-t-[2rem] bg-white p-6 shadow-2xl sm:rounded-[2rem]">
+        <h3 className="text-lg font-extrabold text-slate-900">
+          {shareType === 'im_here'
+            ? "📍 Tell friends you're here"
+            : "🚶 Tell friends you're heading there"}
         </h3>
-        <p className="mt-1 text-sm text-zinc-400">
-          {place ? place.name : 'Your current location'} · visible for 1 hour · only to the friends
-          you pick
+        <p className="mt-1 text-sm text-slate-500">
+          {place ? place.name : 'Your current location'} · visible for 1 hour · only to the
+          friends you pick
         </p>
         <div className="mt-4 max-h-64 space-y-2 overflow-y-auto">
           {friends.data?.friends.length === 0 && (
-            <p className="text-sm text-zinc-500">Add friends first to share your location.</p>
+            <p className="text-sm text-slate-400">Add friends first to share your location.</p>
           )}
           {friends.data?.friends.map((f) => (
             <label
               key={f.friendshipId}
-              className="flex cursor-pointer items-center gap-3 rounded-xl bg-white/5 px-3 py-2.5 hover:bg-white/10"
+              className="flex cursor-pointer items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 hover:bg-orange-50"
             >
               <input
                 type="checkbox"
                 checked={selected.has(f.user.id)}
                 onChange={() => toggle(f.user.id)}
-                className="h-4 w-4 accent-emerald-500"
+                className="h-4 w-4 accent-orange-500"
               />
-              <span className="text-sm text-white">{f.user.name}</span>
+              <span className="text-sm font-bold text-slate-800">{f.user.name}</span>
             </label>
           ))}
         </div>
         {share.isError && (
-          <p className="mt-3 text-sm text-rose-400">{(share.error as Error).message}</p>
+          <p className="mt-3 text-sm font-medium text-rose-500">
+            {(share.error as Error).message}
+          </p>
         )}
         <div className="mt-6 flex justify-end gap-3">
-          <button onClick={onClose} className="rounded-xl px-4 py-2 text-sm text-zinc-400 hover:text-white">
+          <button
+            onClick={onClose}
+            className="rounded-full px-5 py-2.5 text-sm font-bold text-slate-400 hover:text-slate-600"
+          >
             Cancel
           </button>
           <button
             disabled={selected.size === 0 || share.isPending}
             onClick={() => share.mutate()}
-            className="rounded-xl bg-emerald-500 px-5 py-2 text-sm font-semibold text-zinc-900 hover:bg-emerald-400 disabled:opacity-40"
+            className="rounded-full bg-gradient-to-r from-orange-400 to-pink-500 px-6 py-2.5 text-sm font-bold text-white shadow-md disabled:opacity-40"
           >
             {share.isPending ? 'Sharing…' : 'Share'}
           </button>

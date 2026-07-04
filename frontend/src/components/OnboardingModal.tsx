@@ -7,7 +7,8 @@ interface Props {
   onDone: () => void
 }
 
-export function OnboardingModal({ initialTags = [], onDone }: Props) {
+/** Full-screen interest picker (onboarding + editing). */
+export function OnboardingScreen({ initialTags = [], onDone }: Props) {
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<Set<string>>(new Set(initialTags))
 
@@ -40,24 +41,27 @@ export function OnboardingModal({ initialTags = [], onDone }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-zinc-900 p-8 shadow-2xl">
-        <h2 className="text-2xl font-bold text-white">What do you love?</h2>
-        <p className="mt-1 text-sm text-zinc-400">
-          Pick at least 3 interests. Your mood + these interests drive what the map highlights for
-          you. You can change them anytime.
-        </p>
-        <div className="mt-6 flex max-h-[45vh] flex-wrap gap-2 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 backdrop-blur-sm sm:items-center sm:p-6">
+      <div className="animate-pop-in flex max-h-[90vh] w-full max-w-2xl flex-col rounded-t-[2rem] bg-white p-7 shadow-2xl sm:rounded-[2rem]">
+        <div className="text-center">
+          <span className="text-4xl">✨</span>
+          <h2 className="mt-2 text-2xl font-extrabold text-slate-900">What do you love?</h2>
+          <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
+            Pick at least 3 interests. Your mood + these interests drive what the map highlights
+            for you. You can change them anytime.
+          </p>
+        </div>
+        <div className="mt-6 flex flex-1 flex-wrap content-start justify-center gap-2 overflow-y-auto">
           {(data?.tags ?? []).map((tag) => {
             const isSelected = selected.has(tag)
             return (
               <button
                 key={tag}
                 onClick={() => toggle(tag)}
-                className={`rounded-full border px-3.5 py-1.5 text-sm capitalize transition-all ${
+                className={`rounded-full border-2 px-4 py-2 text-sm font-bold capitalize transition-all ${
                   isSelected
-                    ? 'border-emerald-400 bg-emerald-400/20 text-emerald-300'
-                    : 'border-white/10 bg-white/5 text-zinc-300 hover:border-white/30'
+                    ? 'border-orange-400 bg-orange-400 text-white shadow-md'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300'
                 }`}
               >
                 {tag}
@@ -65,18 +69,20 @@ export function OnboardingModal({ initialTags = [], onDone }: Props) {
             )
           })}
         </div>
-        <div className="mt-8 flex items-center justify-between">
-          <span className="text-sm text-zinc-500">{selected.size} selected</span>
+        <div className="mt-7 flex items-center justify-between">
+          <span className="text-sm font-bold text-slate-400">{selected.size} selected</span>
           <button
             disabled={selected.size < 3 || save.isPending}
             onClick={() => save.mutate()}
-            className="rounded-xl bg-emerald-500 px-6 py-2.5 font-semibold text-zinc-900 transition-all hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-full bg-gradient-to-r from-orange-400 to-pink-500 px-7 py-3 font-bold text-white shadow-lg transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {save.isPending ? 'Saving…' : 'Start exploring'}
           </button>
         </div>
         {save.isError && (
-          <p className="mt-3 text-sm text-rose-400">{(save.error as Error).message}</p>
+          <p className="mt-3 text-sm font-medium text-rose-500">
+            {(save.error as Error).message}
+          </p>
         )}
       </div>
     </div>

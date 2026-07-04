@@ -6,19 +6,20 @@ interface Props {
   onSelect: (mood: MoodType | null) => void
 }
 
+/** Horizontal, scrollable mood chip carousel (mobile-app style). */
 export function MoodBar({ active, onSelect }: Props) {
   return (
-    <div className="pointer-events-auto flex max-w-[92vw] items-center gap-1.5 overflow-x-auto rounded-2xl border border-white/10 bg-zinc-900/80 p-1.5 shadow-2xl backdrop-blur-md">
+    <div className="no-scrollbar pointer-events-auto flex w-full items-center gap-2 overflow-x-auto px-4 pb-1 pt-2">
       {MOODS.map((m) => {
         const isActive = active === m.id
         return (
           <button
             key={m.id}
             onClick={() => onSelect(isActive ? null : m.id)}
-            className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-medium transition-all ${
+            className={`flex shrink-0 items-center gap-1.5 rounded-full border-2 px-4 py-2 text-sm font-bold shadow-sm transition-all ${
               isActive
-                ? 'text-zinc-900 shadow-lg'
-                : 'text-zinc-300 hover:bg-white/10 hover:text-white'
+                ? 'scale-105 border-transparent text-white shadow-md'
+                : 'border-white bg-white/95 text-slate-600 hover:scale-105'
             }`}
             style={isActive ? { backgroundColor: m.color } : undefined}
           >
