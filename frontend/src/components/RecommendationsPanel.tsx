@@ -8,54 +8,59 @@ interface Props {
   onPick: (place: ScoredPlace) => void
 }
 
-export function RecommendationsPanel({ mood, recommendations, isLoading, onPick }: Props) {
+/** Horizontal card carousel of mood-scoped picks, floating over the map. */
+export function RecommendationsCarousel({ mood, recommendations, isLoading, onPick }: Props) {
   const meta = moodById(mood)!
   return (
-    <div className="pointer-events-auto flex max-h-[60vh] w-80 flex-col rounded-2xl border border-white/10 bg-zinc-900/90 shadow-2xl backdrop-blur-md">
-      <div className="border-b border-white/10 px-5 py-3">
-        <h3 className="font-bold text-white">
+    <div className="pointer-events-none w-full">
+      <div className="px-4 pb-1">
+        <span
+          className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold text-white shadow-md"
+          style={{ backgroundColor: meta.color }}
+        >
           {meta.emoji} {meta.label} picks for you
-        </h3>
-        <p className="text-[11px] text-zinc-500">
-          Ranked by your interests + what you've loved before
-        </p>
+        </span>
       </div>
-      <div className="flex-1 overflow-y-auto p-3">
-        {isLoading && <p className="px-2 py-4 text-sm text-zinc-400">Finding your vibe…</p>}
-        {!isLoading && recommendations.length === 0 && (
-          <p className="px-2 py-4 text-sm text-zinc-500">
-            Nothing open nearby matches this mood right now — try zooming out or another mood.
-          </p>
+      <div className="no-scrollbar pointer-events-auto flex w-full snap-x gap-3 overflow-x-auto px-4 pb-2 pt-1">
+        {isLoading && (
+          <div className="rounded-3xl bg-white/95 px-5 py-4 text-sm font-medium text-slate-500 shadow-lg">
+            Finding your vibe…
+          </div>
         )}
-        <ul className="space-y-1.5">
-          {recommendations.map((r, i) => (
-            <li key={r.googlePlaceId}>
-              <button
-                onClick={() => onPick(r)}
-                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-white/10"
+        {!isLoading && recommendations.length === 0 && (
+          <div className="rounded-3xl bg-white/95 px-5 py-4 text-sm font-medium text-slate-500 shadow-lg">
+            Nothing open nearby matches this mood — try zooming out or another mood.
+          </div>
+        )}
+        {recommendations.map((r, i) => (
+          <button
+            key={r.googlePlaceId}
+            onClick={() => onPick(r)}
+            className="flex w-56 shrink-0 snap-start flex-col gap-1.5 rounded-3xl bg-white/95 p-4 text-left shadow-lg transition-transform hover:-translate-y-0.5"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black text-white"
+                style={{ backgroundColor: meta.color }}
               >
-                <span
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-zinc-900"
-                  style={{ backgroundColor: meta.color }}
-                >
-                  {i + 1}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-white">{r.name}</span>
-                  <span className="block text-[11px] capitalize text-zinc-500">
-                    {r.category?.split('_').join(' ')} ·{' '}
-                    {r.distanceMeters < 1000
-                      ? `${r.distanceMeters} m`
-                      : `${(r.distanceMeters / 1000).toFixed(1)} km`}
-                  </span>
-                </span>
-                <span className="text-xs font-semibold" style={{ color: meta.color }}>
-                  {Math.round(r.score * 100)}%
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+                {i + 1}
+              </span>
+              <span
+                className="rounded-full px-2 py-0.5 text-xs font-black"
+                style={{ color: meta.color, backgroundColor: `${meta.color}22` }}
+              >
+                {Math.round(r.score * 100)}% match
+              </span>
+            </div>
+            <span className="mt-1 truncate text-sm font-bold text-slate-800">{r.name}</span>
+            <span className="truncate text-xs capitalize text-slate-500">
+              {r.category?.split('_').join(' ')} ·{' '}
+              {r.distanceMeters < 1000
+                ? `${r.distanceMeters} m`
+                : `${(r.distanceMeters / 1000).toFixed(1)} km`}
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   )

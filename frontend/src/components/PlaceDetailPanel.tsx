@@ -13,7 +13,8 @@ interface Props {
 
 const REPORT_LEVELS: BusynessLevel[] = ['empty', 'calm', 'moderate', 'busy', 'very_busy']
 
-export function PlaceDetailPanel({ place, activeMood, onClose, onShare }: Props) {
+/** Bottom-sheet place details: live status, busyness + reporting, sharing, rating. */
+export function PlaceDetailSheet({ place, activeMood, onClose, onShare }: Props) {
   const queryClient = useQueryClient()
   const [rating, setRating] = useState(0)
   const mood = moodById(activeMood)
@@ -43,131 +44,143 @@ export function PlaceDetailPanel({ place, activeMood, onClose, onShare }: Props)
   })
 
   return (
-    <div className="pointer-events-auto flex w-80 flex-col gap-4 rounded-2xl border border-white/10 bg-zinc-900/90 p-5 shadow-2xl backdrop-blur-md">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h3 className="text-lg font-bold leading-tight text-white">{place.name}</h3>
-          <p className="mt-0.5 text-xs capitalize text-zinc-400">
-            {place.category?.split('_').join(' ')}
-            {place.address ? ` · ${place.address}` : ''}
-          </p>
+    <div className="animate-sheet-up pointer-events-auto mx-auto w-full max-w-lg rounded-t-[2rem] bg-white shadow-[0_-8px_40px_rgba(0,0,0,0.15)]">
+      <div className="flex justify-center pt-3">
+        <span className="h-1.5 w-12 rounded-full bg-slate-200" />
+      </div>
+      <div className="max-h-[55vh] space-y-4 overflow-y-auto px-6 pb-6 pt-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-xl font-extrabold leading-tight text-slate-900">{place.name}</h3>
+            <p className="mt-1 text-xs capitalize text-slate-500">
+              {place.category?.split('_').join(' ')}
+              {place.address ? ` · ${place.address}` : ''}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+          >
+            ✕
+          </button>
         </div>
-        <button onClick={onClose} className="text-zinc-500 hover:text-white">
-          ✕
-        </button>
-      </div>
 
-      <div className="flex items-center gap-2 text-sm">
-        {place.openNow != null && (
-          <span
-            className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-              place.openNow ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
-            }`}
-          >
-            {place.openNow ? 'Open now' : 'Closed'}
-          </span>
-        )}
-        {typeof place.distanceMeters === 'number' && (
-          <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-zinc-300">
-            {place.distanceMeters < 1000
-              ? `${place.distanceMeters} m`
-              : `${(place.distanceMeters / 1000).toFixed(1)} km`}
-          </span>
-        )}
-        {typeof place.score === 'number' && mood && (
-          <span
-            className="rounded-full px-2.5 py-0.5 text-xs font-medium text-zinc-900"
-            style={{ backgroundColor: mood.color }}
-          >
-            {Math.round(place.score * 100)}% {mood.label.toLowerCase()} match
-          </span>
-        )}
-      </div>
-
-      <div className="rounded-xl bg-white/5 p-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
-            Busyness
-          </span>
-          {busyness.data?.source === 'crowdsourced' && (
-            <span className="text-[10px] text-zinc-500">
-              {busyness.data.uniqueReporters} reports · last hour
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {place.openNow != null && (
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-bold ${
+                place.openNow ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+              }`}
+            >
+              {place.openNow ? 'Open now' : 'Closed'}
+            </span>
+          )}
+          {typeof place.distanceMeters === 'number' && (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+              {place.distanceMeters < 1000
+                ? `${place.distanceMeters} m`
+                : `${(place.distanceMeters / 1000).toFixed(1)} km`}
+            </span>
+          )}
+          {typeof place.score === 'number' && mood && (
+            <span
+              className="rounded-full px-3 py-1 text-xs font-bold text-white"
+              style={{ backgroundColor: mood.color }}
+            >
+              {Math.round(place.score * 100)}% {mood.label.toLowerCase()} match
             </span>
           )}
         </div>
-        <p className="mt-1 text-sm text-white">
-          {busyness.isLoading
-            ? 'Checking…'
-            : busyness.data?.level
-              ? BUSYNESS_LABELS[busyness.data.level]
-              : 'Not enough data yet'}
-        </p>
-        <div className="mt-2">
-          <p className="text-[11px] text-zinc-500">Are you here? Report it:</p>
-          <div className="mt-1 flex gap-1">
-            {REPORT_LEVELS.map((level) => (
-              <button
-                key={level}
-                onClick={() => report.mutate(level)}
-                disabled={report.isPending}
-                className="flex-1 rounded-lg bg-white/10 px-1 py-1 text-[10px] text-zinc-300 transition-colors hover:bg-white/20"
-                title={BUSYNESS_LABELS[level]}
-              >
-                {BUSYNESS_LABELS[level]}
-              </button>
-            ))}
+
+        <div className="rounded-2xl bg-orange-50 p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-extrabold uppercase tracking-wide text-orange-400">
+              Busyness
+            </span>
+            {busyness.data?.source === 'crowdsourced' && (
+              <span className="text-[10px] font-medium text-slate-400">
+                {busyness.data.uniqueReporters} reports · last hour
+              </span>
+            )}
           </div>
-          {report.isError && (
-            <p className="mt-1 text-[11px] text-amber-400">{(report.error as Error).message}</p>
-          )}
-          {report.isSuccess && <p className="mt-1 text-[11px] text-emerald-400">Thanks!</p>}
-        </div>
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          onClick={() => onShare(place, 'im_here')}
-          className="flex-1 rounded-xl bg-white/10 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20"
-        >
-          📍 I'm here
-        </button>
-        <button
-          onClick={() => onShare(place, 'intent_to_go')}
-          className="flex-1 rounded-xl bg-white/10 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20"
-        >
-          🚶 Heading there
-        </button>
-      </div>
-
-      {activeMood && place.placeId && (
-        <div className="rounded-xl bg-white/5 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
-            Visited? Rate the vibe match
+          <p className="mt-1 text-base font-bold text-slate-800">
+            {busyness.isLoading
+              ? 'Checking…'
+              : busyness.data?.level
+                ? BUSYNESS_LABELS[busyness.data.level]
+                : 'Not enough data yet'}
           </p>
-          {rateVisit.isSuccess ? (
-            <p className="mt-2 text-sm text-emerald-400">
-              Got it — your {mood?.label.toLowerCase()} recommendations just got smarter.
-            </p>
-          ) : (
-            <div className="mt-1.5 flex gap-1">
-              {[1, 2, 3, 4, 5].map((star) => (
+          <div className="mt-2">
+            <p className="text-[11px] font-medium text-slate-500">Are you here? Report it:</p>
+            <div className="mt-1.5 flex gap-1.5">
+              {REPORT_LEVELS.map((level) => (
                 <button
-                  key={star}
-                  onMouseEnter={() => setRating(star)}
-                  onMouseLeave={() => setRating(0)}
-                  onClick={() => rateVisit.mutate(star)}
-                  disabled={rateVisit.isPending}
-                  className={`text-xl transition-transform hover:scale-110 ${
-                    star <= rating ? 'grayscale-0' : 'grayscale'
-                  }`}
+                  key={level}
+                  onClick={() => report.mutate(level)}
+                  disabled={report.isPending}
+                  className="flex-1 rounded-full bg-white px-1 py-1.5 text-[10px] font-bold text-slate-600 shadow-sm transition-colors hover:bg-orange-100"
+                  title={BUSYNESS_LABELS[level]}
                 >
-                  ⭐
+                  {BUSYNESS_LABELS[level]}
                 </button>
               ))}
             </div>
-          )}
+            {report.isError && (
+              <p className="mt-1.5 text-[11px] font-medium text-amber-600">
+                {(report.error as Error).message}
+              </p>
+            )}
+            {report.isSuccess && (
+              <p className="mt-1.5 text-[11px] font-bold text-emerald-600">Thanks!</p>
+            )}
+          </div>
         </div>
-      )}
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => onShare(place, 'im_here')}
+            className="flex-1 rounded-full bg-gradient-to-r from-orange-400 to-pink-500 px-3 py-3 text-sm font-bold text-white shadow-md transition-transform hover:scale-[1.02]"
+          >
+            📍 I'm here
+          </button>
+          <button
+            onClick={() => onShare(place, 'intent_to_go')}
+            className="flex-1 rounded-full bg-gradient-to-r from-sky-400 to-indigo-500 px-3 py-3 text-sm font-bold text-white shadow-md transition-transform hover:scale-[1.02]"
+          >
+            🚶 Heading there
+          </button>
+        </div>
+
+        {activeMood && place.placeId && (
+          <div className="rounded-2xl bg-violet-50 p-4">
+            <p className="text-xs font-extrabold uppercase tracking-wide text-violet-400">
+              Visited? Rate the vibe match
+            </p>
+            {rateVisit.isSuccess ? (
+              <p className="mt-2 text-sm font-bold text-emerald-600">
+                Got it — your {mood?.label.toLowerCase()} recommendations just got smarter.
+              </p>
+            ) : (
+              <div className="mt-2 flex gap-1.5">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    onMouseEnter={() => setRating(star)}
+                    onMouseLeave={() => setRating(0)}
+                    onClick={() => rateVisit.mutate(star)}
+                    disabled={rateVisit.isPending}
+                    className={`text-2xl transition-transform hover:scale-125 ${
+                      star <= rating ? 'grayscale-0' : 'grayscale'
+                    }`}
+                  >
+                    ⭐
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

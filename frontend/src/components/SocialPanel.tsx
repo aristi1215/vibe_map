@@ -9,23 +9,35 @@ interface Props {
   onFocusShare: (lat: number, lng: number) => void
 }
 
-export function SocialPanel({ meId, onClose, onFocusShare }: Props) {
+/** Bottom-sheet friends hub: requests, friend list, 1:1 chat, live shares. */
+export function SocialSheet({ meId, onClose, onFocusShare }: Props) {
   const [chatWith, setChatWith] = useState<FriendEntry | null>(null)
 
   return (
-    <div className="pointer-events-auto flex h-[70vh] w-96 flex-col rounded-2xl border border-white/10 bg-zinc-900/90 shadow-2xl backdrop-blur-md">
-      <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
-        <h3 className="font-bold text-white">{chatWith ? chatWith.user.name : 'Friends'}</h3>
-        <div className="flex gap-3">
+    <div className="animate-sheet-up pointer-events-auto mx-auto flex h-[70vh] w-full max-w-lg flex-col rounded-t-[2rem] bg-white shadow-[0_-8px_40px_rgba(0,0,0,0.15)]">
+      <div className="flex justify-center pt-3">
+        <span className="h-1.5 w-12 rounded-full bg-slate-200" />
+      </div>
+      <div className="flex items-center justify-between px-6 py-3">
+        <div className="flex items-center gap-3">
           {chatWith && (
-            <button onClick={() => setChatWith(null)} className="text-sm text-zinc-400 hover:text-white">
-              ← Back
+            <button
+              onClick={() => setChatWith(null)}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+            >
+              ←
             </button>
           )}
-          <button onClick={onClose} className="text-zinc-500 hover:text-white">
-            ✕
-          </button>
+          <h3 className="text-lg font-extrabold text-slate-900">
+            {chatWith ? chatWith.user.name : '👥 Friends'}
+          </h3>
         </div>
+        <button
+          onClick={onClose}
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+        >
+          ✕
+        </button>
       </div>
       {chatWith ? (
         <ChatView meId={meId} friend={chatWith} />
@@ -74,7 +86,7 @@ function FriendsView({
   })
 
   return (
-    <div className="flex-1 space-y-5 overflow-y-auto p-5">
+    <div className="flex-1 space-y-5 overflow-y-auto px-6 pb-6">
       <form
         onSubmit={(e) => {
           e.preventDefault()
@@ -87,37 +99,42 @@ function FriendsView({
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Add friend by email"
           type="email"
-          className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-emerald-400"
+          className="flex-1 rounded-full border-2 border-slate-100 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-orange-300"
         />
         <button
           type="submit"
           disabled={sendRequest.isPending}
-          className="rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-zinc-900 hover:bg-emerald-400 disabled:opacity-40"
+          className="rounded-full bg-gradient-to-r from-orange-400 to-pink-500 px-5 text-sm font-bold text-white shadow-md disabled:opacity-40"
         >
           Add
         </button>
       </form>
       {sendRequest.isError && (
-        <p className="text-xs text-rose-400">{(sendRequest.error as Error).message}</p>
+        <p className="text-xs font-medium text-rose-500">{(sendRequest.error as Error).message}</p>
       )}
 
       {(friends.data?.incoming.length ?? 0) > 0 && (
         <section>
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Requests</h4>
+          <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-400">
+            Requests
+          </h4>
           <ul className="mt-2 space-y-2">
             {friends.data!.incoming.map((r) => (
-              <li key={r.friendshipId} className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2">
-                <span className="text-sm text-white">{r.user.name}</span>
+              <li
+                key={r.friendshipId}
+                className="flex items-center justify-between rounded-2xl bg-amber-50 px-4 py-2.5"
+              >
+                <span className="text-sm font-bold text-slate-800">{r.user.name}</span>
                 <span className="flex gap-2">
                   <button
                     onClick={() => respond.mutate({ id: r.friendshipId, action: 'accept' })}
-                    className="rounded-lg bg-emerald-500/20 px-2.5 py-1 text-xs text-emerald-300 hover:bg-emerald-500/30"
+                    className="rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-600"
                   >
                     Accept
                   </button>
                   <button
                     onClick={() => respond.mutate({ id: r.friendshipId, action: 'reject' })}
-                    className="rounded-lg bg-white/10 px-2.5 py-1 text-xs text-zinc-300 hover:bg-white/20"
+                    className="rounded-full bg-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-300"
                   >
                     Decline
                   </button>
@@ -129,20 +146,23 @@ function FriendsView({
       )}
 
       <section>
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Friends</h4>
+        <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-400">Friends</h4>
         {friends.data?.friends.length === 0 && (
-          <p className="mt-2 text-sm text-zinc-500">No friends yet — add someone by email.</p>
+          <p className="mt-2 text-sm text-slate-400">No friends yet — add someone by email.</p>
         )}
         <ul className="mt-2 space-y-2">
           {friends.data?.friends.map((f) => (
-            <li key={f.friendshipId} className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2">
+            <li
+              key={f.friendshipId}
+              className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-2.5"
+            >
               <div>
-                <p className="text-sm text-white">{f.user.name}</p>
-                <p className="text-[11px] text-zinc-500">{f.user.email}</p>
+                <p className="text-sm font-bold text-slate-800">{f.user.name}</p>
+                <p className="text-[11px] text-slate-400">{f.user.email}</p>
               </div>
               <button
                 onClick={() => onChat(f)}
-                className="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/20"
+                className="rounded-full bg-sky-100 px-4 py-1.5 text-xs font-bold text-sky-600 hover:bg-sky-200"
               >
                 💬 Chat
               </button>
@@ -150,7 +170,7 @@ function FriendsView({
           ))}
         </ul>
         {(friends.data?.outgoing.length ?? 0) > 0 && (
-          <p className="mt-2 text-[11px] text-zinc-500">
+          <p className="mt-2 text-[11px] text-slate-400">
             Pending sent: {friends.data!.outgoing.map((o) => o.user.name).join(', ')}
           </p>
         )}
@@ -158,25 +178,30 @@ function FriendsView({
 
       {(shares.data?.incoming.length ?? 0) > 0 && (
         <section>
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+          <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-400">
             Friends sharing location
           </h4>
           <ul className="mt-2 space-y-2">
             {shares.data!.incoming.map((s) => (
-              <li key={s.id} className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2">
+              <li
+                key={s.id}
+                className="flex items-center justify-between rounded-2xl bg-sky-50 px-4 py-2.5"
+              >
                 <div>
-                  <p className="text-sm text-white">
+                  <p className="text-sm font-bold text-slate-800">
                     {s.user?.name ?? 'Friend'}{' '}
-                    <span className="text-[11px] text-zinc-500">
+                    <span className="text-[11px] font-medium text-slate-400">
                       {s.share_type === 'im_here' ? 'is here' : 'is heading out'}
                     </span>
                   </p>
-                  {s.signalLost && <p className="text-[11px] text-amber-400">signal lost</p>}
+                  {s.signalLost && (
+                    <p className="text-[11px] font-bold text-amber-500">signal lost</p>
+                  )}
                 </div>
                 {s.last_known_lat != null && s.last_known_lng != null && (
                   <button
                     onClick={() => onFocusShare(s.last_known_lat!, s.last_known_lng!)}
-                    className="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/20"
+                    className="rounded-full bg-white px-4 py-1.5 text-xs font-bold text-sky-600 shadow-sm hover:bg-sky-100"
                   >
                     View
                   </button>
@@ -211,13 +236,18 @@ function ChatView({ meId, friend }: { meId: string; friend: FriendEntry }) {
 
   return (
     <>
-      <div className="flex flex-1 flex-col-reverse overflow-y-auto p-4">
+      <div className="flex flex-1 flex-col-reverse overflow-y-auto px-5 py-3">
         <div className="space-y-2">
           {(messages.data?.messages ?? []).map((m) => (
-            <div key={m.id} className={`flex ${m.sender_id === meId ? 'justify-end' : 'justify-start'}`}>
+            <div
+              key={m.id}
+              className={`flex ${m.sender_id === meId ? 'justify-end' : 'justify-start'}`}
+            >
               <div
-                className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${
-                  m.sender_id === meId ? 'bg-emerald-500 text-zinc-900' : 'bg-white/10 text-white'
+                className={`max-w-[75%] rounded-3xl px-4 py-2 text-sm font-medium ${
+                  m.sender_id === meId
+                    ? 'bg-gradient-to-r from-orange-400 to-pink-500 text-white'
+                    : 'bg-slate-100 text-slate-800'
                 }`}
               >
                 {m.content}
@@ -231,18 +261,18 @@ function ChatView({ meId, friend }: { meId: string; friend: FriendEntry }) {
           e.preventDefault()
           if (draft.trim()) send.mutate(draft.trim())
         }}
-        className="flex gap-2 border-t border-white/10 p-3"
+        className="flex gap-2 border-t border-slate-100 p-4"
       >
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Message…"
-          className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-emerald-400"
+          className="flex-1 rounded-full border-2 border-slate-100 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-orange-300"
         />
         <button
           type="submit"
           disabled={send.isPending || !draft.trim()}
-          className="rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-zinc-900 hover:bg-emerald-400 disabled:opacity-40"
+          className="rounded-full bg-gradient-to-r from-orange-400 to-pink-500 px-5 text-sm font-bold text-white shadow-md disabled:opacity-40"
         >
           Send
         </button>
